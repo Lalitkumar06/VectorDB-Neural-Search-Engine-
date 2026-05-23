@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VectorDB — Neural Search Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #040609;
+    --surface:   #080d14;
+    --panel:     #0c1420;
+    --border:    #1a2d45;
+    --border2:   #0f1e30;
+    --accent:    #00d4ff;
+    --accent2:   #ff6b35;
+    --accent3:   #7fff6e;
+    --muted:     #3a5570;
+    --text:      #c8dff0;
+    --text2:     #6e90ae;
+    --glow:      rgba(0,212,255,0.15);
+    --glow2:     rgba(255,107,53,0.12);
+    --mono:      'Space Mono', monospace;
+    --display:   'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── GRID NOISE BACKGROUND ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(var(--border2) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border2) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* ── AMBIENT GLOW ORBS ── */
+  body::after {
+    content: '';
+    position: fixed; top: -20vh; left: -10vw;
+    width: 60vw; height: 60vh;
+    background: radial-gradient(ellipse, rgba(0,212,255,0.05) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .orb2 {
+    position: fixed; bottom: -10vh; right: -10vw;
+    width: 50vw; height: 50vh;
+    background: radial-gradient(ellipse, rgba(255,107,53,0.05) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(4,6,9,0.85);
+    backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 14px;
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+    padding: 5px;
+    box-shadow: 0 0 16px var(--glow), inset 0 0 12px rgba(0,212,255,0.06);
+    animation: pulse-border 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-border {
+    0%,100% { box-shadow: 0 0 16px var(--glow), inset 0 0 12px rgba(0,212,255,0.06); }
+    50%      { box-shadow: 0 0 28px rgba(0,212,255,0.3), inset 0 0 20px rgba(0,212,255,0.1); }
+  }
+
+  .logo-mark span {
+    background: var(--accent);
+    border-radius: 2px;
+    opacity: 0.7;
+  }
+
+  .logo-mark span:nth-child(1) { opacity: 1; }
+  .logo-mark span:nth-child(3) { opacity: 0.4; }
+  .logo-mark span:nth-child(4) { background: var(--accent2); opacity: 0.8; }
+
+  .logo-text {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .logo-sub {
+    font-size: 10px;
+    color: var(--text2);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 1px;
+  }
+
+  /* STATUS BADGES */
+  .status-bar {
+    display: flex; gap: 12px; align-items: center;
+  }
+
+  .badge {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--text2);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #555;
+  }
+
+  .dot.online { background: var(--accent3); box-shadow: 0 0 6px var(--accent3); animation: blink 2s ease-in-out infinite; }
+  .dot.offline { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+
+  @keyframes blink {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── MAIN LAYOUT ── */
+  .app {
+    position: relative; z-index: 1;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 24px 48px;
+  }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+    padding-top: 24px;
+  }
+
+  .tab-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text2);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 12px 24px;
+    position: relative;
+    transition: color 0.2s;
+  }
+
+  .tab-btn::after {
+    content: '';
+    position: absolute; bottom: -1px; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .tab-btn.active { color: var(--accent); }
+  .tab-btn.active::after { transform: scaleX(1); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  .tab-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 3px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 9px; color: var(--text2);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── SECTION TITLES ── */
+  .section-label {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── CARDS / PANELS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+  }
+
+  .card-accent {
+    border-color: var(--accent);
+    box-shadow: 0 0 24px rgba(0,212,255,0.06);
+  }
+
+  /* ── FORM ELEMENTS ── */
+  label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 7px;
+  }
+
+  input[type=text], input[type=number], textarea, select {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.08);
+  }
+
+  textarea { resize: vertical; min-height: 100px; }
+
+  select option { background: var(--panel); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: none; cursor: pointer;
+    border-radius: 5px;
+    padding: 11px 22px;
+    transition: all 0.2s;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    box-shadow: 0 0 20px rgba(0,212,255,0.2);
+  }
+
+  .btn-primary:hover {
+    background: #33deff;
+    box-shadow: 0 0 30px rgba(0,212,255,0.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid rgba(255,107,53,0.3);
+    font-size: 10px; padding: 6px 12px;
+  }
+
+  .btn-danger:hover {
+    background: rgba(255,107,53,0.08);
+    border-color: var(--accent2);
+  }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  /* ── GRID LAYOUTS ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── SEARCH TAB ── */
+  .search-container {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .search-controls { display: flex; flex-direction: column; gap: 16px; }
+
+  .algo-grid {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
+  }
+
+  .algo-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .algo-card:hover { border-color: var(--muted); }
+  .algo-card.selected { border-color: var(--accent); background: rgba(0,212,255,0.05); }
+
+  .algo-name {
+    font-size: 12px; font-weight: 700;
+    color: var(--accent);
+    display: block; margin-bottom: 3px;
+  }
+
+  .algo-desc { font-size: 10px; color: var(--text2); }
+
+  .metric-pills {
+    display: flex; gap: 8px;
+  }
+
+  .pill {
+    flex: 1; text-align: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 4px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    color: var(--text2);
+    transition: all 0.15s;
+  }
+
+  .pill:hover { border-color: var(--muted); color: var(--text); }
+  .pill.selected { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,53,0.06); }
+
+  /* RESULTS */
+  .result-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+    animation: fadeSlide 0.3s ease both;
+  }
+
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .result-item:hover { border-color: var(--muted); }
+  .result-item.highlighted { border-color: var(--accent); box-shadow: 0 0 12px rgba(0,212,255,0.1); }
+
+  .result-rank {
+    font-size: 10px; font-weight: 700;
+    color: var(--accent);
+    width: 24px; text-align: center;
+    flex-shrink: 0;
+  }
+
+  .result-label { flex: 1; font-size: 12px; color: var(--text); }
+  .result-cat { font-size: 10px; color: var(--text2); margin-top: 2px; }
+
+  .result-score {
+    font-size: 12px;
+    color: var(--accent3);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  /* SCATTER PLOT */
+  .plot-canvas {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 100%; aspect-ratio: 1;
+    position: relative; overflow: hidden;
+  }
+
+  .plot-canvas canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+
+  .plot-label {
+    position: absolute; bottom: 12px; left: 14px;
+    font-size: 9px; color: var(--text2);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  /* BENCHMARK */
+  .bench-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .bench-algo { font-size: 11px; font-weight: 700; color: var(--text); width: 80px; }
+  .bench-bar-wrap { flex: 1; height: 6px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+  .bench-bar { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+  .bench-time { font-size: 11px; color: var(--accent); width: 64px; text-align: right; }
+
+  /* ── DOCS TAB ── */
+  .doc-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    margin-bottom: 8px;
+    animation: fadeSlide 0.3s ease both;
+  }
+
+  .doc-title { font-size: 13px; color: var(--text); }
+  .doc-meta { font-size: 10px; color: var(--text2); margin-top: 3px; }
+
+  /* ── ASK AI TAB ── */
+  .chat-wrap {
+    display: grid; grid-template-columns: 1fr 340px; gap: 24px;
+    align-items: start;
+  }
+
+  .messages {
+    min-height: 420px; max-height: 520px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .msg {
+    display: flex; gap: 12px;
+    animation: fadeSlide 0.25s ease both;
+  }
+
+  .msg.user { flex-direction: row-reverse; }
+
+  .msg-avatar {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .msg.user .msg-avatar {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+
+  .msg.ai .msg-avatar {
+    background: rgba(0,212,255,0.1);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  .msg-bubble {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .msg.user .msg-bubble {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px 0 6px 6px;
+  }
+
+  .msg.ai .msg-bubble {
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.15);
+    color: var(--text);
+    border-radius: 0 6px 6px 6px;
+  }
+
+  .context-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+  .chip {
+    font-size: 10px;
+    background: rgba(127,255,110,0.06);
+    border: 1px solid rgba(127,255,110,0.2);
+    color: var(--accent3);
+    padding: 3px 10px; border-radius: 3px;
+    cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+
+  .chip:hover { background: rgba(127,255,110,0.12); }
+
+  .chat-input-row {
+    display: flex; gap: 10px; margin-top: 14px;
+  }
+
+  .chat-input-row input { flex: 1; }
+
+  /* ── STAT BOXES ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    position: relative; overflow: hidden;
+  }
+
+  .stat-box::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent);
+  }
+
+  .stat-box:nth-child(2)::before { background: var(--accent2); }
+  .stat-box:nth-child(3)::before { background: var(--accent3); }
+  .stat-box:nth-child(4)::before { background: var(--muted); }
+
+  .stat-val {
+    font-family: var(--display);
+    font-size: 26px; font-weight: 800;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .stat-key {
+    font-size: 10px; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-top: 5px;
+  }
+
+  /* ── HNSW INFO ── */
+  .hnsw-layer {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .layer-num {
+    width: 56px; font-size: 10px; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .layer-bar-wrap { flex: 1; height: 8px; background: var(--panel); border-radius: 4px; overflow: hidden; }
+
+  .layer-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  .layer-count { font-size: 11px; color: var(--text); width: 40px; text-align: right; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    transform: translateY(16px); opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    pointer-events: none;
+  }
+
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.ok  { border-color: var(--accent3); color: var(--accent3); }
+  #toast.err { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── TYPEWRITER CURSOR ── */
+  .cursor { display: inline-block; width: 8px; height: 13px; background: var(--accent); vertical-align: middle; margin-left: 2px; animation: blink-cursor 0.7s steps(1) infinite; }
+  @keyframes blink-cursor { 50% { opacity: 0; } }
+
+  /* ── LOADING SPINNER ── */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TERMINAL BLOCK ── */
+  .terminal {
+    background: #020509;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-size: 11px; color: var(--accent3);
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .terminal .prefix { color: var(--text2); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .search-container { grid-template-columns: 1fr; }
+    .chat-wrap { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 600px) {
+    header { padding: 14px 16px; }
+    .app { padding: 0 16px 48px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="orb2"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div>
+      <div class="logo-text">Vector<span>DB</span></div>
+      <div class="logo-sub">Neural Search Engine</div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="badge" id="ollamaStatus">
+      <span class="dot" id="ollamaDot"></span>
+      <span id="ollamaLabel">Checking Ollama…</span>
+    </div>
+    <div class="badge" id="embBadge" style="display:none">
+      <span class="dot online"></span>
+      <span id="embModel">—</span>
+    </div>
+    <div class="badge">
+      <span style="color:var(--accent)">20</span>&nbsp;vectors · 16D
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="app">
+
+  <!-- STATS ROW -->
+  <div class="stats-row" style="margin-top:24px">
+    <div class="stat-box"><div class="stat-val" id="statVecs">20</div><div class="stat-key">Demo Vectors</div></div>
+    <div class="stat-box"><div class="stat-val" id="statDocs">0</div><div class="stat-key">Doc Chunks</div></div>
+    <div class="stat-box"><div class="stat-val">3</div><div class="stat-key">Algorithms</div></div>
+    <div class="stat-box"><div class="stat-val">16D</div><div class="stat-key">Demo Dimensions</div></div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('search',this)">⚡ Search</button>
+    <button class="tab-btn" onclick="switchTab('docs',this)">📄 Documents</button>
+    <button class="tab-btn" onclick="switchTab('ask',this)">🤖 Ask AI</button>
+    <button class="tab-btn" onclick="switchTab('info',this)">🔬 HNSW Info</button>
+  </div>
+
+  <!-- ═══════════ TAB: SEARCH ═══════════ -->
+  <div class="tab-panel active" id="tab-search">
+    <div class="search-container">
+
+      <div class="search-controls">
+        <div class="card">
+          <div class="section-label" style="margin-bottom:16px">Query Vector</div>
+          <label>Search Term (text → 16D demo space)</label>
+          <input type="text" id="searchInput" placeholder="e.g. binary tree, sushi, calculus…" />
+
+          <div style="margin-top:16px">
+            <div class="section-label">Algorithm</div>
+            <div class="algo-grid">
+              <div class="algo-card selected" onclick="selectAlgo('hnsw',this)">
+                <span class="algo-name">HNSW</span>
+                <span class="algo-desc">O(log N) · Graph</span>
+              </div>
+              <div class="algo-card" onclick="selectAlgo('kdtree',this)">
+                <span class="algo-name">KD-Tree</span>
+                <span class="algo-desc">O(log N) · BSP</span>
+              </div>
+              <div class="algo-card" onclick="selectAlgo('brute',this)">
+                <span class="algo-name">Brute</span>
+                <span class="algo-desc">O(N·d) · Exact</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px">
+            <div class="section-label">Distance Metric</div>
+            <div class="metric-pills">
+              <div class="pill selected" onclick="selectMetric('cosine',this)">Cosine</div>
+              <div class="pill" onclick="selectMetric('euclidean',this)">Euclidean</div>
+              <div class="pill" onclick="selectMetric('manhattan',this)">Manhattan</div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px" class="grid-2">
+            <div>
+              <label>K (neighbors)</label>
+              <input type="number" id="kInput" value="5" min="1" max="20" />
+            </div>
+            <div style="display:flex;align-items:flex-end;">
+              <button class="btn btn-primary" style="width:100%" onclick="runSearch()">
+                <span id="searchBtnIcon">⚡</span> Search
+              </button>
+            </div>
+          </div>
+
+          <button class="btn btn-secondary" style="width:100%;margin-top:10px" onclick="runBenchmark()">
+            ▶ Compare All Algorithms
+          </button>
+        </div>
+
+        <!-- BENCHMARK RESULTS -->
+        <div class="card" id="benchCard" style="display:none">
+          <div class="section-label">Benchmark Results</div>
+          <div id="benchResults"></div>
+        </div>
+
+        <!-- SEARCH RESULTS -->
+        <div class="card" id="resultsCard" style="display:none">
+          <div class="section-label">Results <span class="tab-count" id="resultCount">0</span></div>
+          <div id="resultsList"></div>
+        </div>
+      </div>
+
+      <!-- SCATTER PLOT -->
+      <div>
+        <div class="section-label">Semantic Space (PCA 2D)</div>
+        <div class="plot-canvas">
+          <canvas id="scatterCanvas"></canvas>
+          <div class="plot-label">PCA Projection</div>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--text2)"><span style="color:#00d4ff">●</span> CS/Algo</span>
+          <span style="font-size:10px;color:var(--text2)"><span style="color:#ff6b35">●</span> Math</span>
+          <span style="font-size:10px;color:var(--text2)"><span style="color:#7fff6e">●</span> Food</span>
+          <span style="font-size:10px;color:var(--text2)"><span style="color:#c77dff">●</span> Sports</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ TAB: DOCUMENTS ═══════════ -->
+  <div class="tab-panel" id="tab-docs">
+    <div class="grid-2" style="align-items:start; gap:24px">
+
+      <div class="card">
+        <div class="section-label">Embed New Document</div>
+        <div class="stack">
+          <div>
+            <label>Document Title</label>
+            <input type="text" id="docTitle" placeholder="e.g. Operating Systems Notes" />
+          </div>
+          <div>
+            <label>Content (paste text, notes, articles…)</label>
+            <textarea id="docText" style="min-height:160px" placeholder="Paste any text here. Long documents are split into overlapping 250-word chunks and each chunk gets its own 768D embedding via Ollama."></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="insertDoc()">
+            <span id="embedBtnIcon">⚡</span> Embed &amp; Insert
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Stored Document Chunks <span class="tab-count" id="docCount">0</span></div>
+        <div id="docList">
+          <div style="color:var(--text2);font-size:12px;padding:20px 0;text-align:center">No documents yet. Embed some text to get started.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ TAB: ASK AI ═══════════ -->
+  <div class="tab-panel" id="tab-ask">
+    <div class="chat-wrap">
+      <div>
+        <div class="section-label">RAG Chat</div>
+        <div class="messages" id="chatMessages">
+          <div class="msg ai">
+            <div class="msg-avatar">AI</div>
+            <div class="msg-bubble">
+              Hello. I'm connected to your local LLM via Ollama. Insert documents in the <strong>Documents</strong> tab, then ask me anything about them. I'll retrieve the most relevant chunks via HNSW search and generate a grounded answer.
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Ask a question about your documents…" onkeydown="if(event.key==='Enter') askAI()" />
+          <button class="btn btn-primary" onclick="askAI()" id="askBtn">Ask</button>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="section-label">RAG Pipeline</div>
+          <div class="terminal" style="font-size:10px;line-height:1.9">
+<span class="prefix">1 · </span>Question → nomic-embed-text
+<span class="prefix">2 · </span>HNSW retrieval (k=3 chunks)
+<span class="prefix">3 · </span>Context → llama3.2
+<span class="prefix">4 · </span>Grounded answer streamed</div>
+        </div>
+        <div class="card" id="contextPanel" style="display:none">
+          <div class="section-label">Retrieved Context</div>
+          <div id="contextChips" class="context-chips"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ TAB: HNSW INFO ═══════════ -->
+  <div class="tab-panel" id="tab-info">
+    <div class="grid-2" style="gap:24px; align-items:start">
+      <div class="card">
+        <div class="section-label">Graph Layer Structure</div>
+        <div id="hnswLayers">
+          <div style="color:var(--text2);font-size:12px;padding:16px 0">Loading HNSW info…</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-label">Index Parameters</div>
+        <div id="hnswParams">
+          <div style="color:var(--text2);font-size:12px;padding:16px 0">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <div class="section-label">REST API Reference</div>
+      <div class="terminal">
+<span class="prefix">GET  </span>/search?v=f1,f2,...&amp;k=5&amp;metric=cosine&amp;algo=hnsw
+<span class="prefix">POST </span>/insert           { "id": "...", "vector": [...], "label": "..." }
+<span class="prefix">DEL  </span>/delete/:id
+<span class="prefix">GET  </span>/benchmark?v=...&amp;k=5&amp;metric=cosine
+<span class="prefix">GET  </span>/hnsw-info
+<span class="prefix">GET  </span>/stats
+<span class="prefix">---  </span>
+<span class="prefix">POST </span>/doc/insert        { "title": "...", "text": "..." }
+<span class="prefix">GET  </span>/doc/list
+<span class="prefix">DEL  </span>/doc/delete/:id
+<span class="prefix">POST </span>/doc/ask           { "question": "...", "k": 3 }
+<span class="prefix">GET  </span>/status
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+/* ─────────────────────────────── STATE ─────────────────────────────── */
+const API = '';  // same origin — backend runs at localhost:8080
+let selectedAlgo   = 'hnsw';
+let selectedMetric = 'cosine';
+let demoVectors    = [];
+let highlightedId  = null;
+
+/* ─────────────────────────────── TABS ──────────────────────────────── */
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'info') loadHnswInfo();
+  if (name === 'docs') loadDocList();
+}
+
+/* ─────────────────────────────── ALGO / METRIC ─────────────────────── */
+function selectAlgo(algo, el) {
+  selectedAlgo = algo;
+  document.querySelectorAll('.algo-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectMetric(metric, el) {
+  selectedMetric = metric;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+/* ─────────────────────────────── TOAST ─────────────────────────────── */
+function toast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+/* ─────────────────────────────── STATUS CHECK ──────────────────────── */
+async function checkStatus() {
+  try {
+    const r = await fetch(API + '/status');
+    const d = await r.json();
+    const dot   = document.getElementById('ollamaDot');
+    const label = document.getElementById('ollamaLabel');
+    if (d.ollama_online) {
+      dot.className   = 'dot online';
+      label.textContent = 'Ollama Online';
+      const eb = document.getElementById('embBadge');
+      eb.style.display = 'flex';
+      document.getElementById('embModel').textContent = d.embed_model || 'nomic-embed-text';
+    } else {
+      dot.className   = 'dot offline';
+      label.textContent = 'Ollama Offline';
+    }
+  } catch (e) {
+    document.getElementById('ollamaLabel').textContent = 'Server Offline';
+    document.getElementById('ollamaDot').className = 'dot offline';
+  }
+}
+
+/* ─────────────────────────────── STATS ─────────────────────────────── */
+async function loadStats() {
+  try {
+    const r = await fetch(API + '/stats');
+    const d = await r.json();
+    document.getElementById('statVecs').textContent = d.total_vectors ?? 20;
+  } catch (e) {}
+  try {
+    const r = await fetch(API + '/doc/list');
+    const d = await r.json();
+    const count = (d.documents || []).length;
+    document.getElementById('statDocs').textContent = count;
+    document.getElementById('docCount').textContent = count;
+  } catch (e) {}
+}
+
+/* ────────────────────────── DEMO VECTOR SEARCH ─────────────────────── */
+/* Map text query to a demo 16D vector (same mapping as original project) */
+const DEMO_VECTORS = {
+  'binary tree':   [0.9,0.8,0.7,0.6,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+  'linked list':   [0.8,0.9,0.6,0.5,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+  'graph algorithm':[0.85,0.75,0.8,0.7,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+  'calculus':      [0.1,0.1,0.1,0.1,0.9,0.8,0.7,0.6,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+  'linear algebra':[0.1,0.1,0.1,0.1,0.8,0.9,0.6,0.5,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+  'sushi':         [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.9,0.8,0.7,0.6,0.1,0.1,0.1,0.1],
+  'pizza':         [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.8,0.9,0.6,0.5,0.1,0.1,0.1,0.1],
+  'basketball':    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.9,0.8,0.7,0.6],
+  'soccer':        [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.8,0.9,0.6,0.5],
+};
+
+function textToVector(text) {
+  const lower = text.toLowerCase().trim();
+  for (const [key, vec] of Object.entries(DEMO_VECTORS)) {
+    if (lower.includes(key) || key.includes(lower)) return vec;
+  }
+  // fuzzy: generate random-ish vector seeded by text hash
+  const vec = new Array(16).fill(0).map((_, i) => {
+    let h = 0;
+    for (let c = 0; c < text.length; c++) h = (h * 31 + text.charCodeAt(c)) & 0xffffffff;
+    return (Math.abs(Math.sin((h + i) * 2.7183)) * 0.8 + 0.1);
+  });
+  const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
+  return vec.map(v => v / mag);
+}
+
+async function runSearch() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) { toast('Enter a search term', 'err'); return; }
+  const k = parseInt(document.getElementById('kInput').value) || 5;
+  const btn = document.querySelector('[onclick="runSearch()"]');
+  const icon = document.getElementById('searchBtnIcon');
+  icon.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  const vec = textToVector(query);
+  const url = `${API}/search?v=${vec.join(',')}&k=${k}&metric=${selectedMetric}&algo=${selectedAlgo}`;
+
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    renderResults(d.results || []);
+    if (d.results && d.results.length) highlightedId = d.results[0].id;
+    drawScatter(highlightedId);
+    toast('Search complete', 'ok');
+  } catch (e) {
+    // Demo mode — simulate results
+    const results = simulateSearch(vec, k);
+    renderResults(results);
+    highlightedId = results[0]?.id;
+    drawScatter(highlightedId);
+    toast('Demo mode (server offline)', '');
+  }
+
+  icon.textContent = '⚡';
+  btn.disabled = false;
+}
+
+function renderResults(results) {
+  const card = document.getElementById('resultsCard');
+  const list = document.getElementById('resultsList');
+  document.getElementById('resultCount').textContent = results.length;
+  card.style.display = '';
+
+  list.innerHTML = results.map((r, i) => `
+    <div class="result-item ${i===0?'highlighted':''}">
+      <div class="result-rank">#${i+1}</div>
+      <div style="flex:1">
+        <div class="result-label">${r.label || r.id || 'Vector '+i}</div>
+        <div class="result-cat">${r.category || ''} ${r.id ? '· id:'+r.id : ''}</div>
+      </div>
+      <div class="result-score">${typeof r.score==='number' ? r.score.toFixed(4) : r.distance?.toFixed(4) || '—'}</div>
+    </div>
+  `).join('');
+}
+
+/* ─────────────────── BENCHMARK ─────────────────── */
+async function runBenchmark() {
+  const query = document.getElementById('searchInput').value.trim() || 'binary tree';
+  const k = parseInt(document.getElementById('kInput').value) || 5;
+  const vec = textToVector(query);
+  const url = `${API}/benchmark?v=${vec.join(',')}&k=${k}&metric=${selectedMetric}`;
+  const benchCard = document.getElementById('benchCard');
+  benchCard.style.display = '';
+  document.getElementById('benchResults').innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    renderBench(d);
+  } catch (e) {
+    // simulate
+    renderBench({
+      hnsw:    { time_us: Math.round(Math.random()*50+10), results:[] },
+      kdtree:  { time_us: Math.round(Math.random()*200+50), results:[] },
+      brute:   { time_us: Math.round(Math.random()*800+200), results:[] },
+    });
+    toast('Demo benchmark', '');
+  }
+}
+
+function renderBench(d) {
+  const algos = [
+    { key:'hnsw',   label:'HNSW',    color:'var(--accent)' },
+    { key:'kdtree', label:'KD-Tree', color:'var(--accent3)' },
+    { key:'brute',  label:'Brute',   color:'var(--accent2)' },
+  ];
+  const times = algos.map(a => (d[a.key]?.time_us || 0));
+  const maxT  = Math.max(...times, 1);
+
+  document.getElementById('benchResults').innerHTML = algos.map((a, i) => `
+    <div class="bench-row">
+      <div class="bench-algo">${a.label}</div>
+      <div class="bench-bar-wrap">
+        <div class="bench-bar" style="width:${(times[i]/maxT*100).toFixed(1)}%;background:${a.color}"></div>
+      </div>
+      <div class="bench-time">${times[i]} µs</div>
+    </div>
+  `).join('');
+}
+
+/* ─────────────────── SCATTER PLOT ─────────────────── */
+const CAT_COLORS = {
+  cs:['#00d4ff','#33dcff','#66e6ff','#0099cc','#00bbee'],
+  math:['#ff6b35','#ff8c5a','#ffad7f','#cc4400','#ee5522'],
+  food:['#7fff6e','#99ff89','#bbffaa','#55cc44','#66dd55'],
+  sports:['#c77dff','#d699ff','#e5b3ff','#9944dd','#aa55ee'],
+};
+
+const DEMO_POINTS = [
+  {id:'cs1',    label:'Binary Tree',     cat:'cs',     x: 0.85, y: 0.80},
+  {id:'cs2',    label:'Linked List',     cat:'cs',     x: 0.75, y: 0.88},
+  {id:'cs3',    label:'Hash Map',        cat:'cs',     x: 0.90, y: 0.70},
+  {id:'cs4',    label:'Graph BFS',       cat:'cs',     x: 0.80, y: 0.75},
+  {id:'cs5',    label:'Dynamic Prog',    cat:'cs',     x: 0.70, y: 0.82},
+  {id:'math1',  label:'Calculus',        cat:'math',   x:-0.80, y: 0.75},
+  {id:'math2',  label:'Linear Algebra',  cat:'math',   x:-0.88, y: 0.68},
+  {id:'math3',  label:'Probability',     cat:'math',   x:-0.75, y: 0.82},
+  {id:'math4',  label:'Statistics',      cat:'math',   x:-0.82, y: 0.60},
+  {id:'math5',  label:'Number Theory',   cat:'math',   x:-0.70, y: 0.70},
+  {id:'food1',  label:'Sushi',           cat:'food',   x:-0.80, y:-0.75},
+  {id:'food2',  label:'Pizza',           cat:'food',   x:-0.88, y:-0.68},
+  {id:'food3',  label:'Ramen',           cat:'food',   x:-0.75, y:-0.82},
+  {id:'food4',  label:'Pasta',           cat:'food',   x:-0.82, y:-0.60},
+  {id:'food5',  label:'Tacos',           cat:'food',   x:-0.70, y:-0.70},
+  {id:'sport1', label:'Basketball',      cat:'sports', x: 0.80, y:-0.75},
+  {id:'sport2', label:'Soccer',          cat:'sports', x: 0.88, y:-0.68},
+  {id:'sport3', label:'Tennis',          cat:'sports', x: 0.75, y:-0.82},
+  {id:'sport4', label:'Swimming',        cat:'sports', x: 0.82, y:-0.60},
+  {id:'sport5', label:'Baseball',        cat:'sports', x: 0.70, y:-0.70},
+];
+
+function drawScatter(highlightId) {
+  const canvas = document.getElementById('scatterCanvas');
+  const wrap   = canvas.parentElement;
+  const size   = wrap.clientWidth;
+  canvas.width  = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const PAD = 20;
+  const cx = size / 2;
+  const cy = size / 2;
+  const scale = (size / 2 - PAD);
+
+  ctx.clearRect(0, 0, size, size);
+
+  // grid lines
+  ctx.strokeStyle = 'rgba(26,45,69,0.6)';
+  ctx.lineWidth = 1;
+  for (let i = -4; i <= 4; i++) {
+    const x = cx + (i / 4) * scale;
+    const y = cy + (i / 4) * scale;
+    ctx.beginPath(); ctx.moveTo(x, PAD); ctx.lineTo(x, size - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(size - PAD, y); ctx.stroke();
+  }
+
+  // axes
+  ctx.strokeStyle = 'rgba(58,85,112,0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx, PAD); ctx.lineTo(cx, size - PAD); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD, cy); ctx.lineTo(size - PAD, cy); ctx.stroke();
+
+  // points
+  const catColorArr = { cs: '#00d4ff', math: '#ff6b35', food: '#7fff6e', sports: '#c77dff' };
+
+  DEMO_POINTS.forEach(p => {
+    const px = cx + p.x * scale * 0.85;
+    const py = cy - p.y * scale * 0.85;
+    const color = catColorArr[p.cat] || '#fff';
+    const isHi = highlightId && p.id === highlightId;
+    const r = isHi ? 7 : 5;
+
+    if (isHi) {
+      ctx.beginPath();
+      ctx.arc(px, py, r + 6, 0, Math.PI * 2);
+      ctx.fillStyle = color + '22';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px, py, r + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = color + '88';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = isHi ? color : color + 'bb';
+    ctx.fill();
+
+    if (isHi) {
+      ctx.font = '10px "Space Mono"';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(p.label, px + 9, py + 4);
+    }
+  });
+}
+
+/* ─────────────────── SIMULATE SEARCH (offline demo) ─────────────────── */
+function simulateSearch(vec, k) {
+  return DEMO_POINTS.slice(0, k).map((p, i) => ({
+    id: p.id, label: p.label, category: p.cat,
+    score: +(0.99 - i * 0.07).toFixed(4)
+  }));
+}
+
+/* ─────────────────── DOCUMENTS ─────────────────── */
+async function insertDoc() {
+  const title = document.getElementById('docTitle').value.trim();
+  const text  = document.getElementById('docText').value.trim();
+  if (!title || !text) { toast('Fill in title and text', 'err'); return; }
+
+  const btn  = document.querySelector('[onclick="insertDoc()"]');
+  const icon = document.getElementById('embedBtnIcon');
+  icon.innerHTML = '<span class="spinner"></span>';
+  btn.disabled   = true;
+
+  try {
+    const r = await fetch(API + '/doc/insert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, text })
+    });
+    const d = await r.json();
+    toast(`Inserted ${d.chunks_inserted || 1} chunk(s)`, 'ok');
+    document.getElementById('docTitle').value = '';
+    document.getElementById('docText').value  = '';
+    loadDocList(); loadStats();
+  } catch (e) {
+    toast('Server offline — cannot embed in demo mode', 'err');
+  }
+
+  icon.textContent = '⚡';
+  btn.disabled = false;
+}
+
+async function loadDocList() {
+  const list = document.getElementById('docList');
+  try {
+    const r = await fetch(API + '/doc/list');
+    const d = await r.json();
+    const docs = d.documents || [];
+    document.getElementById('docCount').textContent = docs.length;
+    document.getElementById('statDocs').textContent  = docs.length;
+    if (!docs.length) {
+      list.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:20px 0;text-align:center">No documents yet.</div>';
+      return;
+    }
+    list.innerHTML = docs.map(doc => `
+      <div class="doc-item">
+        <div>
+          <div class="doc-title">${doc.title || 'Untitled'}</div>
+          <div class="doc-meta">${doc.chunk_index !== undefined ? 'Chunk '+doc.chunk_index : ''} · ${doc.word_count||'?'} words · 768D</div>
+        </div>
+        <button class="btn btn-danger" onclick="deleteDoc('${doc.id}')">Delete</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:20px 0;text-align:center">Server offline.</div>';
+  }
+}
+
+async function deleteDoc(id) {
+  try {
+    await fetch(API + '/doc/delete/' + id, { method: 'DELETE' });
+    toast('Deleted', 'ok'); loadDocList(); loadStats();
+  } catch (e) { toast('Error', 'err'); }
+}
+
+/* ─────────────────── ASK AI ─────────────────── */
+async function askAI() {
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+
+  const messages = document.getElementById('chatMessages');
+  appendMsg(messages, 'user', q);
+
+  const aiMsgEl = appendMsg(messages, 'ai', '');
+  const bubble  = aiMsgEl.querySelector('.msg-bubble');
+  bubble.innerHTML = '<span class="cursor"></span>';
+
+  const btn = document.getElementById('askBtn');
+  btn.disabled = true; btn.textContent = '…';
+
+  try {
+    const r = await fetch(API + '/doc/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, k: 3 })
+    });
+    const d = await r.json();
+
+    // Typewriter effect
+    await typewrite(bubble, d.answer || 'No answer returned.');
+
+    if (d.context_chunks && d.context_chunks.length) {
+      renderContextChips(d.context_chunks);
+    }
+  } catch (e) {
+    await typewrite(bubble, 'The server appears to be offline. Start the C++ backend with `./db` and ensure Ollama is running, then ask again.');
+  }
+
+  btn.disabled = false; btn.textContent = 'Ask';
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function appendMsg(container, role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `
+    <div class="msg-avatar">${role === 'user' ? 'YOU' : 'AI'}</div>
+    <div class="msg-bubble">${text}</div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+async function typewrite(el, text) {
+  el.innerHTML = '';
+  for (let i = 0; i < text.length; i++) {
+    el.innerHTML = text.slice(0, i + 1) + '<span class="cursor"></span>';
+    await new Promise(r => setTimeout(r, 12));
+  }
+  el.innerHTML = text;
+}
+
+function renderContextChips(chunks) {
+  const panel = document.getElementById('contextPanel');
+  const chips = document.getElementById('contextChips');
+  panel.style.display = '';
+  chips.innerHTML = chunks.map((c, i) => `
+    <span class="chip" title="${(c.text||'').slice(0,200)}">
+      ${c.title || 'Chunk '+(i+1)}
+    </span>
+  `).join('');
+}
+
+/* ─────────────────── HNSW INFO ─────────────────── */
+async function loadHnswInfo() {
+  const layerEl  = document.getElementById('hnswLayers');
+  const paramsEl = document.getElementById('hnswParams');
+  try {
+    const r = await fetch(API + '/hnsw-info');
+    const d = await r.json();
+    const layers = d.layers || [];
+    const maxNodes = Math.max(...layers.map(l => l.node_count || 0), 1);
+    layerEl.innerHTML = layers.map((l, i) => `
+      <div class="hnsw-layer">
+        <div class="layer-num">Layer ${l.level ?? i}</div>
+        <div class="layer-bar-wrap"><div class="layer-bar" style="width:${((l.node_count||0)/maxNodes*100).toFixed(1)}%"></div></div>
+        <div class="layer-count">${l.node_count ?? '—'}</div>
+      </div>
+    `).join('');
+
+    paramsEl.innerHTML = `
+      <div class="terminal">
+<span class="prefix">M            </span>${d.M ?? 16}
+<span class="prefix">ef_construct </span>${d.ef_construction ?? 200}
+<span class="prefix">total_nodes  </span>${d.total_nodes ?? 20}
+<span class="prefix">max_layer    </span>${d.max_layer ?? layers.length}
+<span class="prefix">avg_degree   </span>${d.avg_degree ?? '—'}
+      </div>`;
+  } catch (e) {
+    // Simulated demo data
+    const simLayers = [
+      {level:0, node_count:20}, {level:1, node_count:7},
+      {level:2, node_count:3}, {level:3, node_count:1}
+    ];
+    const maxN = 20;
+    layerEl.innerHTML = simLayers.map(l => `
+      <div class="hnsw-layer">
+        <div class="layer-num">Layer ${l.level}</div>
+        <div class="layer-bar-wrap"><div class="layer-bar" style="width:${(l.node_count/maxN*100).toFixed(0)}%"></div></div>
+        <div class="layer-count">${l.node_count}</div>
+      </div>
+    `).join('');
+    paramsEl.innerHTML = `<div class="terminal">
+<span class="prefix">M            </span>16
+<span class="prefix">ef_construct </span>200
+<span class="prefix">total_nodes  </span>20
+<span class="prefix">max_layer    </span>3
+<span class="prefix">algo         </span>HNSW + KD-Tree + BruteForce
+    </div>`;
+    toast('Demo mode — server offline', '');
+  }
+}
+
+/* ─────────────────── INIT ─────────────────── */
+window.addEventListener('load', () => {
+  drawScatter(null);
+  checkStatus();
+  loadStats();
+  setInterval(checkStatus, 10000);
+});
+
+window.addEventListener('resize', () => drawScatter(highlightedId));
+</script>
+</body>
+</html>
